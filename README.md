@@ -1,47 +1,17 @@
 # Unit interval graph recognition
 
-A linear-time C++17 implementation of Corneil's three-sweep LBFS
-recognition algorithm for unit interval graphs (equivalently, proper
-interval graphs).
+Two C++17 recognizers for unit interval graphs (equivalently, proper
+interval graphs):
 
-If the graph is a unit interval graph, the program also prints an
-**umbrella ordering** \(v_1,\ldots,v_n\):
+| implementation | method | complexity |
+|---|---|---|
+| [`three_sweep_lbfs.cpp`](three_sweep_lbfs.cpp) | Corneil's three-sweep `LBFS+` algorithm | \(O(n+m)\) |
+| [`bfs_mcs.cpp`](bfs_mcs.cpp) | BFS + maximum-selected-neighbor greedy (MCS) | \(O((n+m)\log n)\) |
 
-\[
-i<j<k,\quad v_iv_k\in E
-\quad\Longrightarrow\quad
-v_iv_j,v_jv_k\in E.
-\]
-
-## Algorithm
-
-1. Run an arbitrary LBFS and obtain \(\sigma\).
-2. Run `LBFS+` with respect to \(\sigma\) and obtain \(\sigma^+\).
-3. Run `LBFS+` with respect to \(\sigma^+\) and obtain \(\sigma^{++}\).
-4. Accept exactly when every closed neighborhood is consecutive in
-   \(\sigma^{++}\).
-
-Among vertices tied by LBFS, `LBFS+` selects the vertex occurring last
-in the preceding ordering.
-
-Each sweep uses stable ordered-partition refinement. Before a sweep,
-the adjacency lists are rebuilt in the required tie-breaking order.
-Consequently, splitting a cell into neighbors and non-neighbors
-preserves that order without sorting individual cells.
-
-For the final check, let \(L_v\) and \(R_v\) be the first and last
-positions occupied by \(N[v]\). Then \(N[v]\) is consecutive exactly
-when
-
-\[
-R_v-L_v=\deg(v).
-\]
-
-The total time and memory complexity are both \(O(n+m)\).
-
-Disconnected graphs are handled directly: an LBFS finishes its current
-component before entering another one. The input must be a simple
-undirected graph.
+Both programs output an **umbrella ordering** when the answer is
+positive and use the same exact certificate verifier from
+[`common.hpp`](common.hpp). See [CORRECTNESS.md](CORRECTNESS.md) for
+the proofs.
 
 ## Input and output
 
@@ -54,7 +24,8 @@ u1 v1
 um vm
 ```
 
-Vertices are numbered from 1 to \(n\).
+Vertices are numbered from 1 to \(n\). The input must be a simple
+undirected graph.
 
 Output:
 
@@ -69,56 +40,112 @@ YES
 v1 v2 ... vn
 ```
 
-where the second line is a valid umbrella ordering.
+where the second line is an umbrella ordering:
+
+\[
+i<j<k,\quad v_iv_k\in E
+\quad\Longrightarrow\quad
+v_iv_j,v_jv_k\in E.
+\]
 
 ## Build
 
-Apple Clang:
-
 ```sh
-clang++ -std=c++17 -O2 -Wall -Wextra -Wshadow -pedantic main.cpp -o unit_interval
+clang++ -std=c++17 -O2 -Wall -Wextra -Wshadow -pedantic \
+    three_sweep_lbfs.cpp -o three_sweep_lbfs
+
+clang++ -std=c++17 -O2 -Wall -Wextra -Wshadow -pedantic \
+    bfs_mcs.cpp -o bfs_mcs
 ```
 
-GCC:
+The same commands work with GCC.
 
-```sh
-g++ -std=c++17 -O2 -Wall -Wextra -Wshadow -pedantic main.cpp -o unit_interval
+## BFS + maximum cardinality search (MCS)
+
+Maximum cardinality search is the standard name introduced by Tarjan
+and Yannakakis. Here “cardinality” is simply `score[v]`, the number of
+already selected neighbors of \(v\). Meanwhile, `degree[v]` is its
+original static degree.
+
+```text
+answer_order = []
+
+for every connected component C:
+    choose an arbitrary r in C
+    dist = BFS(r)
+
+    D = maximum dist[v] over v in C
+    s = a minimum-degree vertex among {v in C : dist[v] = D}
+
+    for v in C:
+        score[v] = 0
+        selected[v] = false
+
+    component_order = []
+    x = s
+
+    while |component_order| < |C|:
+        append x to component_order
+        selected[x] = true
+
+        for y in adj[x]:
+            if not selected[y]:
+                score[y] += 1
+
+        if |component_order| < |C|:
+            x = an unselected vertex maximizing
+                (score[x], -degree[x])
+
+    append component_order to answer_order
+
+verify that every closed neighborhood N[v]
+is consecutive in answer_order
+
+if verification fails:
+    return NO
+else:
+    return YES and answer_order
 ```
 
-## The BFS + MCS alternative
+The vertex \(s\) is forced to be selected first. Any tie remaining
+after both score and degree may be resolved arbitrarily. A lazy
+priority queue implements the selection step.
 
-The following simpler \(O((n+m)\log n)\) contest implementation is also
-correct when applied to each connected component:
+## Three-sweep LBFS
 
-1. Run ordinary BFS from any vertex.
-2. In the last BFS level, choose a vertex \(s\) of minimum original
-   degree.
-3. Force MCS to start at \(s\). At every later step, maximize the
-   number of already selected neighbors and then minimize the original
-   degree. Remaining ties are arbitrary.
-4. Apply the same consecutive-neighborhood check.
+The linear implementation computes
 
-This is not an LBFS algorithm. It follows from Lemma 3.7 and Corollary
-3.10 of Cao's paper: the BFS rule finds an end vertex, and
-\(\mathrm{MCS}_\delta\) starting at an end vertex produces an umbrella
-ordering. A lazy priority queue gives the stated complexity.
+\[
+\sigma=\operatorname{LBFS}(G),\qquad
+\sigma^+=\operatorname{LBFS+}(G,\sigma),\qquad
+\sigma^{++}=\operatorname{LBFS+}(G,\sigma^+).
+\]
+
+`LBFS+` is ordinary LBFS except that vertices with equal labels are
+tied by choosing the vertex occurring last in the preceding ordering.
+Stable ordered-partition refinement makes each sweep linear.
 
 ## Testing
 
-The implementation was checked against a brute-force permutation
-oracle on every labeled simple graph through \(n=6\), totaling 33,868
-graphs.
+Both implementations were checked against a brute-force
+umbrella-ordering oracle on every labeled simple graph through
+\(n=6\), totaling 33,868 graphs.
 
-The LBFS and BFS + MCS recognizers were also compared on:
+They were also compared on:
 
 - every connected labeled unit interval graph through \(n=6\), for
-  every BFS root, every eligible starting vertex, and every legal MCS
-  tie choice;
+  every BFS root, every eligible MCS start, and every legal remaining
+  MCS tie;
 - 5,000 randomly generated unit interval graphs;
 - 10,000 arbitrary random graphs.
 
-All decisions matched. The code was additionally tested with Clang,
-GCC 15, AddressSanitizer, and UndefinedBehaviorSanitizer.
+All decisions matched. Both implementations were additionally tested
+with Apple Clang, GCC 15, AddressSanitizer, and
+UndefinedBehaviorSanitizer.
+
+The returned orderings need not be identical. On a connected positive
+instance, umbrella orderings may differ by reversal and by permutations
+of true twins.
 
 ## References
 
@@ -128,3 +155,6 @@ GCC 15, AddressSanitizer, and UndefinedBehaviorSanitizer.
 - Y. Cao,
   [Recognizing (Unit) Interval Graphs by Zigzag Graph Searches](https://arxiv.org/abs/2010.03354),
   2020.
+- R. E. Tarjan and M. Yannakakis,
+  [Simple linear-time algorithms to test chordality of graphs, test acyclicity of hypergraphs, and selectively reduce acyclic hypergraphs](https://doi.org/10.1137/0213035),
+  *SIAM Journal on Computing* 13(3), 1984.

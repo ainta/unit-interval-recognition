@@ -1,3 +1,5 @@
 /unit_interval
 /unit_interval_gcc
+/three_sweep_lbfs
+/bfs_mcs
 *.dSYM/
